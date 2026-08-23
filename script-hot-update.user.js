@@ -5,7 +5,7 @@
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
-// @icon         https://wk.piao.one/assets/%E5%9B%BE%E5%B1%82%201-D6uQ9z8H.png
+// @icon         https://free.boltp.com/2026/08/23/6a8a95ada6aef.webp
 // @match        *://*.chaoxing.com/*
 // @match        *://*.xuexitong.com/*
 // @match        *://*.edu.cn/*
