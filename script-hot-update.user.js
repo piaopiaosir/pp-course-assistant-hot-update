@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         |🥇PP网课小助手|飘飘|热更新版本|
 // @namespace    飘飘
-// @version      1.0.1
+// @version      1.0.2
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
