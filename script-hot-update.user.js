@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         |🥇PP网课小助手|飘飘|热更新版本|
 // @namespace    飘飘
-// @version      1.0.2
+// @version      1.0.3
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
-// @icon         https://free.boltp.com/2026/08/23/6a8a95ada6aef.webp
+// @icon         https://tuchuang-1310788589.cos.ap-guangzhou.myqcloud.com/_selftest/icon.webp
 // @match        *://*.chaoxing.com/*
 // @match        *://*.xuexitong.com/*
 // @match        *://*.edu.cn/*
