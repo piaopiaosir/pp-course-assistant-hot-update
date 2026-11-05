@@ -1,26 +1,30 @@
 // ==UserScript==
 // @name         |🥇PP网课小助手|飘飘|热更新版本|
 // @namespace    飘飘
-// @version      1.0.3
+// @version      1.1.0
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
 // @icon         https://tuchuang-1310788589.cos.ap-guangzhou.myqcloud.com/_selftest/icon.webp
 // @match        *://*.chaoxing.com/*
 // @match        *://*.xuexitong.com/*
+// @match        *://*.xueyinonline.com/*
 // @match        *://*.edu.cn/*
 // @match        *://*.nbdlib.cn/*
 // @match        *://*.hnsyu.net/*
 // @match        *://*.gdhkmooc.com/*
-// @match        *://onlineexamh5new.zhihuishu.com/*
+// @match        *://*.sslibrary.com/*
+// @match        *://*.zhihuishu.com/*
+// @match        *://*.hike-teaching-center.polymas.com/*
+// @match        *://*.yuketang.cn/*
+// @match        *://*.gdufemooc.cn/*
 // @require      https://lib.baomitu.com/vue/3.5.0/vue.global.prod.js
 // @require      https://lib.baomitu.com/vue-demi/0.14.7/index.iife.js
 // @require      data:application/javascript,window.Vue%3DVue%3B
-// @require      https://lib.baomitu.com/element-plus/2.7.2/index.full.min.js
+// @require      https://lib.baomitu.com/element-plus/2.8.2/index.full.min.js
 // @require      https://lib.baomitu.com/pinia/2.3.1/pinia.iife.min.js
 // @require      https://lib.baomitu.com/rxjs/7.8.2/rxjs.umd.min.js
 // @require      https://lib.baomitu.com/blueimp-md5/2.19.0/js/md5.min.js
-// @resource     ElementPlus       https://lib.baomitu.com/element-plus/2.7.2/index.css
 // @resource     ElementPlusStyle  https://lib.baomitu.com/element-plus/2.8.2/index.min.css
 // @resource     ttf               https://www.forestpolice.org/ttf/2.0/table.json
 // @connect      scriptcat.org
@@ -33,7 +37,9 @@
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @run-at       document-start
-// @antifeature  payment  答案需调用AI的API需收费
+// @tag          ChatGPT|Gemini|Deepseek多模型支持
+// @tag          免费题库
+// @tag          全题型支持
 // ==/UserScript==
 
 (function () {
@@ -47,8 +53,9 @@
         SCRIPTCAT: {
             SCRIPT_ID: '5597',
             SCRIPT_NAME: 'PP网课小助手',
-            CODE_URL: 'https://wk.piao.one/api/proxy/download.user.js',
-            CODE_URL_FALLBACK: 'https://scriptcat.org/scripts/code/5597/%7C%F0%9F%A5%87PP%E7%BD%91%E8%AF%BE%E5%B0%8F%E5%8A%A9%E6%89%8B%7C%E9%A3%98%E9%A3%98%7C.user.js'
+            CODE_URL: 'https://scriptcat.org/scripts/code/5597/%7C%F0%9F%A5%87PP%E7%BD%91%E8%AF%BE%E5%B0%8F%E5%8A%A9%E6%89%8B%7C%E9%A3%98%E9%A3%98%7C.user.js',
+            CODE_URL_FALLBACK: 'https://fastgit.cc/https://raw.githubusercontent.com/piaopiaosir/pp-course-assistant/main/script.user.js',
+            CODE_URL_RAW: 'https://raw.githubusercontent.com/piaopiaosir/pp-course-assistant/main/script.user.js'
         },
         CACHE_KEY: 'cloud_script_cache',
         VERSION_KEY: 'cloud_script_version',
@@ -206,7 +213,12 @@
             const versionMatch = response.match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
             if (versionMatch && versionMatch[1]) {
                 const latestVersion = versionMatch[1];
-                const currentVersion = GM_info?.script?.version || '1.2.0';
+                // 当前版本直接取管理器安装的脚本版本，取不到则跳过检查，避免误判为需要更新
+                const currentVersion = GM_info?.script?.version;
+                if (!currentVersion) {
+                    log.warn('无法获取启动器版本，跳过启动器更新检查');
+                    return false;
+                }
                 
                 if (compareVersion(latestVersion, currentVersion) > 0) {
                     log.warn(`引导脚本有新版本: v${currentVersion} → v${latestVersion}`);
@@ -295,28 +307,38 @@
         }
     }
 
+    function isValidScriptCode(code) {
+        return typeof code === 'string'
+            && code.indexOf('// ==/UserScript==') !== -1
+            && /\/\/\s*@version\s+\d+\.\d+\.\d+/.test(code);
+    }
+
     async function downloadScriptCode() {
-        try {
-            log.info('从主链接下载脚本代码...');
-            const code = await httpGet(CONFIG.SCRIPTCAT.CODE_URL, true, { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' });
-            const versionMatch = code.match(/@version\s+(\d+\.\d+\.\d+)/);
-            const version = versionMatch ? versionMatch[1] : 'unknown';
-            log.success(`下载完成，版本: ${version}`);
-            return { code, version };
-        } catch (e) {
-            log.warn('主链接下载失败:', e.message);
+        const headers = { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' };
+        const sources = [
+            { name: '脚本猫', url: CONFIG.SCRIPTCAT.CODE_URL },
+            { name: 'GitHub(fastgit 中转)', url: CONFIG.SCRIPTCAT.CODE_URL_FALLBACK },
+            { name: 'GitHub 直连', url: CONFIG.SCRIPTCAT.CODE_URL_RAW }
+        ];
+        let lastError = null;
+        for (const source of sources) {
             try {
-                log.info('尝试备用链接下载...');
-                const code = await httpGet(CONFIG.SCRIPTCAT.CODE_URL_FALLBACK, true, { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' });
-                const versionMatch = code.match(/@version\s+(\d+\.\d+\.\d+)/);
+                log.info(`从${source.name}下载脚本代码...`);
+                const code = await httpGet(source.url, true, headers);
+                if (!isValidScriptCode(code)) {
+                    throw new Error('返回内容不是有效的用户脚本代码');
+                }
+                const versionMatch = code.match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
                 const version = versionMatch ? versionMatch[1] : 'unknown';
-                log.success(`备用链接下载完成，版本: ${version}`);
+                log.success(`${source.name}下载完成，版本: ${version}`);
                 return { code, version };
-            } catch (e2) {
-                log.error('备用链接下载也失败:', e2.message);
-                throw e2;
+            } catch (e) {
+                lastError = e;
+                log.warn(`${source.name}下载失败:`, e.message);
             }
         }
+        log.error('全部下载链接均失败:', lastError && lastError.message);
+        throw lastError || new Error('脚本下载失败');
     }
 
     function executeCode(code) {
@@ -332,7 +354,7 @@
             if (typeof Vue === 'undefined') {
                 throw new Error('Vue 未加载，请检查 @require 配置');
             }
-            log.info('依赖库检查: Vue=' + (typeof Vue !== 'undefined') + ', Pinia=' + (typeof Pinia !== 'undefined') + ', RxJS=' + (typeof rxjs !== 'undefined') + ', MD5=' + (typeof md5 !== 'undefined') + ', ElementPlus=' + (typeof ElementPlus !== 'undefined'));
+            log.info('依赖库检查: Vue=' + (typeof Vue !== 'undefined') + ', Pinia=' + (typeof Pinia !== 'undefined') + ', RxJS=' + (typeof rxjs !== 'undefined') + ', MD5=' + (typeof md5 !== 'undefined') + ', ElementPlus=' + (typeof ElementPlus !== 'undefined') + (typeof ElementPlus !== 'undefined' && ElementPlus.version ? '(' + ElementPlus.version + ')' : ''));
             eval(executableCode);
             log.success('脚本执行成功');
             setupMainWindowObserver();
@@ -425,13 +447,19 @@
         showLoadingWindow();
         try {
             const localCache = getLocalCache();
-            let code = localCache.code;
-            let version = localCache.version;
+            const cacheValid = isValidScriptCode(localCache.code);
+            if (!cacheValid && localCache.code) {
+                log.warn('本地缓存的代码无效，将重新下载');
+            }
+            let code = cacheValid ? localCache.code : '';
+            let version = cacheValid ? localCache.version : '';
+            cloudVersion = version || 'unknown';
+            window.__CLOUD_SCRIPT_VERSION__ = cloudVersion;
             try {
                 log.info('检查版本更新...');
                 const latestVersion = await fetchLatestVersion();
-                if (!localCache.version || compareVersion(latestVersion, localCache.version) > 0) {
-                    log.info(`发现新版本: ${localCache.version || '无'} → ${latestVersion}`);
+                if (!code || !version || compareVersion(latestVersion, version) > 0) {
+                    log.info(`发现新版本: ${version || '无'} → ${latestVersion}`);
                     const result = await downloadScriptCode();
                     code = result.code;
                     version = result.version;
@@ -442,12 +470,21 @@
                         showNotification(`🔄 脚本已更新到 v${version}`, 'success');
                     }
                 } else {
-                    log.success(`已是最新版本 v${localCache.version}`);
+                    log.success(`已是最新版本 v${version}`);
                 }
             } catch (e) {
-                log.warn('检查更新失败，使用本地缓存:', e.message);
-                if (!code) {
-                    throw new Error('网络异常且无本地缓存，无法启动脚本');
+                log.warn('检查更新失败:', e.message);
+                if (code) {
+                    log.info('使用本地缓存继续执行');
+                } else {
+                    // 版本接口不可用且无缓存：直接走多源下载（脚本猫 → GitHub 中转 → GitHub 直连）
+                    log.info('无本地缓存，尝试直接从下载源获取脚本...');
+                    const result = await downloadScriptCode();
+                    code = result.code;
+                    version = result.version;
+                    cloudVersion = version;
+                    window.__CLOUD_SCRIPT_VERSION__ = version;
+                    saveLocalCache(version, code);
                 }
             }
             if (code) {
