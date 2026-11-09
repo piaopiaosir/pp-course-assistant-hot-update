@@ -5,7 +5,7 @@
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
-// @icon         https://tuchuang-1310788589.cos.ap-guangzhou.myqcloud.com/_selftest/icon.webp
+// @icon         https://cdn.jsdmirror.com/gh/piaopiaosir/pp-course-assistant@main/icon.webp
 // @match        *://*.chaoxing.com/*
 // @match        *://*.xuexitong.com/*
 // @match        *://*.xueyinonline.com/*
