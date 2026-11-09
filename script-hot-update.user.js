@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         |🥇PP网课小助手|飘飘|热更新版本|
 // @namespace    飘飘
-// @version      1.1.1
+// @version      1.2.0
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
@@ -234,7 +234,6 @@
             const versionMatch = response.match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
             if (versionMatch && versionMatch[1]) {
                 const latestVersion = versionMatch[1];
-                // 当前版本直接取管理器安装的脚本版本，取不到则跳过检查，避免误判为需要更新
                 const currentVersion = GM_info?.script?.version;
                 if (!currentVersion) {
                     log.warn('无法获取启动器版本，跳过启动器更新检查');
@@ -244,7 +243,6 @@
                 if (compareVersion(latestVersion, currentVersion) > 0) {
                     log.warn(`引导脚本有新版本: v${currentVersion} → v${latestVersion}`);
                     
-                    // 显示更新提示对话框（不自动关闭）
                     const showDialog = () => {
                         const dialog = document.createElement('div');
                         dialog.id = 'bootstrap-update-dialog';
@@ -294,7 +292,6 @@
                         document.addEventListener('DOMContentLoaded', showDialog);
                     }
                     
-                    // 返回 true 表示需要更新，停止后续执行
                     return true;
                 } else {
                     log.success(`引导脚本已是最新版本 v${currentVersion}`);
@@ -303,7 +300,6 @@
             }
         } catch (e) {
             log.warn('检查引导脚本版本失败:', e.message);
-            // 检查失败时不阻止执行
             return false;
         }
         return false;
@@ -463,13 +459,11 @@
             log.info('检测到在 iframe 中运行，跳过');
             return;
         }
-        // i.mooc.chaoxing.com 首页不显示加载窗口
         if (window.location.hostname === 'i.mooc.chaoxing.com') {
             log.info('检测到 i.mooc.chaoxing.com 首页，跳过加载窗口');
             return;
         }
         
-        // 检查引导脚本版本，如果需要更新则停止执行
         const needsUpdate = await checkBootstrapVersion();
         if (needsUpdate) {
             log.warn('引导脚本需要更新，停止后续执行');
@@ -510,7 +504,6 @@
                 if (code) {
                     log.info('使用本地缓存继续执行');
                 } else {
-                    // 版本接口不可用且无缓存：直接走多源下载（gh-proxy → 脚本猫 → CDN）
                     log.info('无本地缓存，尝试直接从下载源获取脚本...');
                     const result = await downloadScriptCode();
                     code = result.code;
