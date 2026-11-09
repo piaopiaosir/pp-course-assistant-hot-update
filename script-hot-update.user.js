@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         |🥇PP网课小助手|飘飘|热更新版本|
 // @namespace    飘飘
-// @version      2.0.0
+// @version      2.1.0
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
@@ -18,6 +18,7 @@
 // @match        *://*.hike-teaching-center.polymas.com/*
 // @match        *://*.yuketang.cn/*
 // @match        *://*.gdufemooc.cn/*
+// @match        *://*.txootd.cn/*
 // @require      https://lib.baomitu.com/vue/3.5.0/vue.global.prod.js
 // @require      https://lib.baomitu.com/vue-demi/0.14.7/index.iife.js
 // @require      data:application/javascript,window.Vue%3DVue%3B
