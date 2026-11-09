@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         |🥇PP网课小助手|飘飘|热更新版本|
 // @namespace    飘飘
-// @version      1.2.0
+// @version      2.0.0
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
@@ -49,6 +49,7 @@
         VERSION_SERVER: {
             VERSION_URL: 'https://scriptcat.org/scripts/code/5597/%7C%F0%9F%A5%87PP%E7%BD%91%E8%AF%BE%E5%B0%8F%E5%8A%A9%E6%89%8B%7C%E9%A3%98%E9%A3%98%7C.meta.js',
             BOOTSTRAP_VERSION_URL: 'https://scriptcat.org/scripts/code/5615/%7C%F0%9F%A5%87PP%E7%BD%91%E8%AF%BE%E5%B0%8F%E5%8A%A9%E6%89%8B%7C%E9%A3%98%E9%A3%98%7C%E7%83%AD%E6%9B%B4%E6%96%B0%E7%89%88%E6%9C%AC%7C.meta.js',
+            BOOTSTRAP_UPDATE_URL: 'https://scriptcat.org/scripts/code/5615/%7C%F0%9F%A5%87PP%E7%BD%91%E8%AF%BE%E5%B0%8F%E5%8A%A9%E6%89%8B%7C%E9%A3%98%E9%A3%98%7C%E7%83%AD%E6%9B%B4%E6%96%B0%E7%89%88%E6%9C%AC%7C.user.js'
         },
         SCRIPTCAT: {
             SCRIPT_ID: '5597',
@@ -57,7 +58,9 @@
         },
         SOURCE: {
             GH_PROXY_URL: 'https://gh-proxy.com/https://raw.githubusercontent.com/piaopiaosir/pp-course-assistant/main/script.user.js',
-            CDN_URL: 'https://cdn.jsdmirror.com/gh/piaopiaosir/pp-course-assistant@main/script.user.js'
+            CDN_URL: 'https://cdn.jsdmirror.com/gh/piaopiaosir/pp-course-assistant@main/script.user.js',
+            BOOTSTRAP_GH_PROXY_URL: 'https://gh-proxy.com/https://raw.githubusercontent.com/piaopiaosir/pp-course-assistant-hot-update/main/script-hot-update.user.js',
+            BOOTSTRAP_CDN_URL: 'https://cdn.jsdmirror.com/gh/piaopiaosir/pp-course-assistant-hot-update@main/script-hot-update.user.js'
         },
         CACHE_KEY: 'cloud_script_cache',
         VERSION_KEY: 'cloud_script_version',
@@ -226,24 +229,61 @@
         GM_setValue(CONFIG.LAST_CHECK_KEY, Date.now());
     }
 
+    async function fetchVersionFromSources(sources) {
+        for (const source of sources) {
+            try {
+                log.info(`从${source.name}获取版本信息...`);
+                let text;
+                if (source.range && typeof fetch === 'function') {
+                    text = await fetchRangeText(source.url, source.range, source.timeout);
+                } else {
+                    const url = source.url + (source.url.includes('?') ? '&' : '?') + 't=' + Date.now();
+                    text = await httpGet(url, true, { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }, source.timeout);
+                }
+                const versionMatch = String(text || '').match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
+                if (versionMatch && versionMatch[1]) {
+                    log.success(`${source.name}最新版本: ${versionMatch[1]}`);
+                    return { version: versionMatch[1], updateUrl: source.updateUrl || source.url };
+                }
+                throw new Error('响应中没有 @version');
+            } catch (e) {
+                log.warn(`${source.name}获取版本失败:`, e.message);
+            }
+        }
+        throw new Error('所有版本源均失败');
+    }
+
     async function checkBootstrapVersion() {
         try {
             log.info('检查引导脚本版本...');
-            const response = await httpGet(CONFIG.VERSION_SERVER.BOOTSTRAP_VERSION_URL, true, { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' });
-            
-            const versionMatch = response.match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
-            if (versionMatch && versionMatch[1]) {
-                const latestVersion = versionMatch[1];
-                const currentVersion = GM_info?.script?.version;
-                if (!currentVersion) {
-                    log.warn('无法获取启动器版本，跳过启动器更新检查');
-                    return false;
-                }
+            const latest = await fetchVersionFromSources([
+                { name: 'gh-proxy', url: CONFIG.SOURCE.BOOTSTRAP_GH_PROXY_URL, updateUrl: CONFIG.SOURCE.BOOTSTRAP_GH_PROXY_URL, range: 'bytes=0-8191', timeout: 10000 },
+                { name: '脚本猫 meta', url: CONFIG.VERSION_SERVER.BOOTSTRAP_VERSION_URL, updateUrl: CONFIG.VERSION_SERVER.BOOTSTRAP_UPDATE_URL, timeout: 30000 },
+                { name: 'CDN', url: CONFIG.SOURCE.BOOTSTRAP_CDN_URL, updateUrl: CONFIG.SOURCE.BOOTSTRAP_CDN_URL, timeout: 20000 }
+            ]);
+            const latestVersion = latest.version;
+            const currentVersion = GM_info?.script?.version;
+            if (!currentVersion) {
+                log.warn('无法获取启动器版本，跳过启动器更新检查');
+                return false;
+            }
                 
                 if (compareVersion(latestVersion, currentVersion) > 0) {
                     log.warn(`引导脚本有新版本: v${currentVersion} → v${latestVersion}`);
                     
                     const showDialog = () => {
+                        const mask = document.createElement('div');
+                        mask.id = 'bootstrap-update-mask';
+                        mask.style.cssText = `
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            right: 0;
+                            bottom: 0;
+                            background: rgba(15, 23, 42, 0.45);
+                            backdrop-filter: blur(2px);
+                            z-index: 2147483646;
+                        `;
                         const dialog = document.createElement('div');
                         dialog.id = 'bootstrap-update-dialog';
                         dialog.style.cssText = `
@@ -275,14 +315,18 @@
                             <div style="font-size: 12px; margin-bottom: 20px; color: #9ca3af;">
                                 安装完成后请刷新页面
                             </div>
-                            <a href="https://scriptcat.org/scripts/code/5615/%7C%F0%9F%A5%87PP%E7%BD%91%E8%AF%BE%E5%B0%8F%E5%8A%A9%E6%89%8B%7C%E9%A3%98%E9%A3%98%7C%E7%83%AD%E6%9B%B4%E6%96%B0%E7%89%88%E6%9C%AC%7C.user.js" target="_blank" 
+                            <a href="${latest.updateUrl}" target="_blank" 
                                style="display: inline-block; background: #0052D9; color: #ffffff; padding: 10px 28px; 
                                       border-radius: 6px; font-size: 14px; text-decoration: none; font-weight: 500;
                                       transition: all 0.2s;">
                                 立即更新
                             </a>
                         `;
+                        if (!document.getElementById('bootstrap-update-mask')) {
+                            document.body.appendChild(mask);
+                        }
                         document.body.appendChild(dialog);
+                        document.body.style.overflow = 'hidden';
                         log.warn('引导脚本需要更新，已停止执行');
                     };
                     
@@ -293,10 +337,9 @@
                     }
                     
                     return true;
-                } else {
-                    log.success(`引导脚本已是最新版本 v${currentVersion}`);
-                    return false;
-                }
+            } else {
+                log.success(`引导脚本已是最新版本 v${currentVersion}`);
+                return false;
             }
         } catch (e) {
             log.warn('检查引导脚本版本失败:', e.message);
@@ -306,32 +349,11 @@
     }
 
     async function fetchLatestVersion() {
-        const sources = [
-            { name: 'gh-proxy', url: CONFIG.SOURCE.GH_PROXY_URL, range: 'bytes=0-8191', timeout: 10000 },
-            { name: '脚本猫 meta', url: CONFIG.VERSION_SERVER.VERSION_URL, timeout: 30000 },
-            { name: 'CDN', url: CONFIG.SOURCE.CDN_URL, timeout: 20000 }
-        ];
-        for (const source of sources) {
-            try {
-                log.info(`从${source.name}获取版本信息...`);
-                let text;
-                if (source.range && typeof fetch === 'function') {
-                    text = await fetchRangeText(source.url, source.range, source.timeout);
-                } else {
-                    const url = source.url + (source.url.includes('?') ? '&' : '?') + 't=' + Date.now();
-                    text = await httpGet(url, true, { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }, source.timeout);
-                }
-                const versionMatch = String(text || '').match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
-                if (versionMatch && versionMatch[1]) {
-                    log.success(`${source.name}最新版本: ${versionMatch[1]}`);
-                    return { version: versionMatch[1], updateUrl: source.url };
-                }
-                throw new Error('响应中没有 @version');
-            } catch (e) {
-                log.warn(`${source.name}获取版本失败:`, e.message);
-            }
-        }
-        throw new Error('所有版本源均失败');
+        return fetchVersionFromSources([
+            { name: 'gh-proxy', url: CONFIG.SOURCE.GH_PROXY_URL, updateUrl: CONFIG.SOURCE.GH_PROXY_URL, range: 'bytes=0-8191', timeout: 10000 },
+            { name: '脚本猫 meta', url: CONFIG.VERSION_SERVER.VERSION_URL, updateUrl: CONFIG.SCRIPTCAT.CODE_URL, timeout: 30000 },
+            { name: 'CDN', url: CONFIG.SOURCE.CDN_URL, updateUrl: CONFIG.SOURCE.CDN_URL, timeout: 20000 }
+        ]);
     }
 
     function isValidScriptCode(code) {
