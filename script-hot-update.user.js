@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         |🥇PP网课小助手|飘飘|热更新版本|
 // @namespace    飘飘
-// @version      1.1.0
+// @version      1.1.1
 // @author       PIAOPIAO
 // @license      MIT
 // @description  轻量级引导脚本，自动拉取最新代码执行。支持热更新，无需手动更新脚本。
@@ -26,7 +26,7 @@
 // @require      https://lib.baomitu.com/rxjs/7.8.2/rxjs.umd.min.js
 // @require      https://lib.baomitu.com/blueimp-md5/2.19.0/js/md5.min.js
 // @resource     ElementPlusStyle  https://lib.baomitu.com/element-plus/2.8.2/index.min.css
-// @resource     ttf               https://www.forestpolice.org/ttf/2.0/table.json
+// @resource     fontDecryptLib    https://cdn.jsdmirror.com/gh/piaopiaosir/pp-font-decrypt@v1.0.3/font-decrypt.js
 // @connect      scriptcat.org
 // @connect      *
 // @grant        GM_addStyle
@@ -53,9 +53,11 @@
         SCRIPTCAT: {
             SCRIPT_ID: '5597',
             SCRIPT_NAME: 'PP网课小助手',
-            CODE_URL: 'https://scriptcat.org/scripts/code/5597/%7C%F0%9F%A5%87PP%E7%BD%91%E8%AF%BE%E5%B0%8F%E5%8A%A9%E6%89%8B%7C%E9%A3%98%E9%A3%98%7C.user.js',
-            CODE_URL_FALLBACK: 'https://fastgit.cc/https://raw.githubusercontent.com/piaopiaosir/pp-course-assistant/main/script.user.js',
-            CODE_URL_RAW: 'https://raw.githubusercontent.com/piaopiaosir/pp-course-assistant/main/script.user.js'
+            CODE_URL: 'https://scriptcat.org/scripts/code/5597/%7C%F0%9F%A5%87PP%E7%BD%91%E8%AF%BE%E5%B0%8F%E5%8A%A9%E6%89%8B%7C%E9%A3%98%E9%A3%98%7C.user.js'
+        },
+        SOURCE: {
+            GH_PROXY_URL: 'https://gh-proxy.com/https://raw.githubusercontent.com/piaopiaosir/pp-course-assistant/main/script.user.js',
+            CDN_URL: 'https://cdn.jsdmirror.com/gh/piaopiaosir/pp-course-assistant@main/script.user.js'
         },
         CACHE_KEY: 'cloud_script_cache',
         VERSION_KEY: 'cloud_script_version',
@@ -171,13 +173,13 @@
         return 0;
     }
 
-    function httpGet(url, isText = false, headers = {}) {
+    function httpGet(url, isText = false, headers = {}, timeout = 15000) {
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: url,
                 headers: headers,
-                timeout: 15000,
+                timeout: timeout,
                 onload: (response) => {
                     if (response.status === 200) {
                         resolve(isText ? response.responseText : response.response);
@@ -189,6 +191,25 @@
                 ontimeout: () => reject(new Error('请求超时'))
             });
         });
+    }
+
+    async function fetchRangeText(url, range, timeout) {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), timeout) : null;
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { Range: range },
+                cache: 'no-store',
+                ...(controller ? { signal: controller.signal } : {})
+            });
+            if (response.status !== 200 && response.status !== 206) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return await response.text();
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     }
 
     function getLocalCache() {
@@ -289,22 +310,32 @@
     }
 
     async function fetchLatestVersion() {
-        try {
-            log.info('从ScriptCat获取版本信息...');
-            const response = await httpGet(CONFIG.VERSION_SERVER.VERSION_URL, true, { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' });
-            
-            const versionMatch = response.match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
-            if (versionMatch && versionMatch[1]) {
-                const version = versionMatch[1];
-                log.info(`ScriptCat最新版本: ${version}`);
-                return version;
-            } else {
-                throw new Error('版本信息格式错误');
+        const sources = [
+            { name: 'gh-proxy', url: CONFIG.SOURCE.GH_PROXY_URL, range: 'bytes=0-8191', timeout: 10000 },
+            { name: '脚本猫 meta', url: CONFIG.VERSION_SERVER.VERSION_URL, timeout: 30000 },
+            { name: 'CDN', url: CONFIG.SOURCE.CDN_URL, timeout: 20000 }
+        ];
+        for (const source of sources) {
+            try {
+                log.info(`从${source.name}获取版本信息...`);
+                let text;
+                if (source.range && typeof fetch === 'function') {
+                    text = await fetchRangeText(source.url, source.range, source.timeout);
+                } else {
+                    const url = source.url + (source.url.includes('?') ? '&' : '?') + 't=' + Date.now();
+                    text = await httpGet(url, true, { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }, source.timeout);
+                }
+                const versionMatch = String(text || '').match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
+                if (versionMatch && versionMatch[1]) {
+                    log.success(`${source.name}最新版本: ${versionMatch[1]}`);
+                    return { version: versionMatch[1], updateUrl: source.url };
+                }
+                throw new Error('响应中没有 @version');
+            } catch (e) {
+                log.warn(`${source.name}获取版本失败:`, e.message);
             }
-        } catch (e) {
-            log.error('获取版本信息失败:', e.message);
-            throw e;
         }
+        throw new Error('所有版本源均失败');
     }
 
     function isValidScriptCode(code) {
@@ -316,22 +347,23 @@
     async function downloadScriptCode() {
         const headers = { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' };
         const sources = [
+            { name: 'gh-proxy', url: CONFIG.SOURCE.GH_PROXY_URL },
             { name: '脚本猫', url: CONFIG.SCRIPTCAT.CODE_URL },
-            { name: 'GitHub(fastgit 中转)', url: CONFIG.SCRIPTCAT.CODE_URL_FALLBACK },
-            { name: 'GitHub 直连', url: CONFIG.SCRIPTCAT.CODE_URL_RAW }
+            { name: 'CDN', url: CONFIG.SOURCE.CDN_URL }
         ];
         let lastError = null;
         for (const source of sources) {
             try {
                 log.info(`从${source.name}下载脚本代码...`);
-                const code = await httpGet(source.url, true, headers);
+                const url = source.url + (source.url.includes('?') ? '&' : '?') + 't=' + Date.now();
+                const code = await httpGet(url, true, headers, 30000);
                 if (!isValidScriptCode(code)) {
                     throw new Error('返回内容不是有效的用户脚本代码');
                 }
                 const versionMatch = code.match(/\/\/\s*@version\s+(\d+\.\d+\.\d+)/);
                 const version = versionMatch ? versionMatch[1] : 'unknown';
                 log.success(`${source.name}下载完成，版本: ${version}`);
-                return { code, version };
+                return { code, version, source: source.url };
             } catch (e) {
                 lastError = e;
                 log.warn(`${source.name}下载失败:`, e.message);
@@ -457,7 +489,8 @@
             window.__CLOUD_SCRIPT_VERSION__ = cloudVersion;
             try {
                 log.info('检查版本更新...');
-                const latestVersion = await fetchLatestVersion();
+                const latest = await fetchLatestVersion();
+                const latestVersion = latest.version;
                 if (!code || !version || compareVersion(latestVersion, version) > 0) {
                     log.info(`发现新版本: ${version || '无'} → ${latestVersion}`);
                     const result = await downloadScriptCode();
@@ -477,7 +510,7 @@
                 if (code) {
                     log.info('使用本地缓存继续执行');
                 } else {
-                    // 版本接口不可用且无缓存：直接走多源下载（脚本猫 → GitHub 中转 → GitHub 直连）
+                    // 版本接口不可用且无缓存：直接走多源下载（gh-proxy → 脚本猫 → CDN）
                     log.info('无本地缓存，尝试直接从下载源获取脚本...');
                     const result = await downloadScriptCode();
                     code = result.code;
